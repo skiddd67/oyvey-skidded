@@ -1,0 +1,246 @@
+package me.alpha432.oyvey.features.modules.client;
+
+import me.alpha432.oyvey.features.modules.Module;
+import me.alpha432.oyvey.features.settings.Setting;
+import net.minecraft.block.Block;
+import net.minecraft.block.Blocks;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.VertexFormats;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.render.Tessellator;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexFormat;
+import org.lwjgl.opengl.GL11;
+import java.awt.Color;
+import java.util.ArrayList;
+import java.util.List;
+
+public class esp extends Module {
+    
+    // Color settings
+    private final Setting<Integer> red = register(new Setting<>("Red", 255, 0, 255));
+    private final Setting<Integer> green = register(new Setting<>("Green", 0, 0, 255));
+    private final Setting<Integer> blue = register(new Setting<>("Blue", 0, 0, 255));
+    private final Setting<Integer> alpha = register(new Setting<>("Alpha", 100, 0, 255));
+    private final Setting<Float> lineWidth = register(new Setting<>("LineWidth", 2.0f, 0.5f, 5.0f));
+    private final Setting<Boolean> fill = register(new Setting<>("Fill", true));
+    private final Setting<Boolean> outline = register(new Setting<>("Outline", true));
+    private final Setting<Integer> range = register(new Setting<>("Range", 50, 10, 100));
+    
+    // Block specific toggles
+    private final Setting<Boolean> chest = register(new Setting<>("Chest", true));
+    private final Setting<Boolean> trappedChest = register(new Setting<>("Trapped Chest", true));
+    private final Setting<Boolean> shulker = register(new Setting<>("Shulker Box", true));
+    private final Setting<Boolean> spawner = register(new Setting<>("Spawner", true));
+    private final Setting<Boolean> netheriteBlock = register(new Setting<>("Netherite Block", true));
+    private final Setting<Boolean> ancientDebris = register(new Setting<>("Ancient Debris", true));
+    private final Setting<Boolean> enderChest = register(new Setting<>("Ender Chest", true));
+    
+    private final List<BlockPos> foundBlocks = new ArrayList<>();
+    
+    public esp() {
+        super("Block Esp", "Find and highlight specific blocks", Category.RENDER);
+    }
+    
+    @Override
+    public void onUpdate() {
+        findBlocks();
+    }
+    
+    private void findBlocks() {
+        foundBlocks.clear();
+        
+        if (mc.player == null || mc.world == null) return;
+        
+        int playerX = (int) mc.player.getX();
+        int playerY = (int) mc.player.getY();
+        int playerZ = (int) mc.player.getZ();
+        
+        int rangeValue = range.getValue();
+        
+        for (int x = playerX - rangeValue; x <= playerX + rangeValue; x++) {
+            for (int y = playerY - rangeValue; y <= playerY + rangeValue; y++) {
+                if (y < mc.world.getBottomY() || y > mc.world.getTopY()) continue;
+                for (int z = playerZ - rangeValue; z <= playerZ + rangeValue; z++) {
+                    BlockPos pos = new BlockPos(x, y, z);
+                    Block block = mc.world.getBlockState(pos).getBlock();
+                    
+                    if (shouldHighlight(block)) {
+                        foundBlocks.add(pos);
+                    }
+                }
+            }
+        }
+    }
+    
+    private boolean shouldHighlight(Block block) {
+        if (chest.getValue() && block == Blocks.CHEST) return true;
+        if (trappedChest.getValue() && block == Blocks.TRAPPED_CHEST) return true;
+        if (enderChest.getValue() && block == Blocks.ENDER_CHEST) return true;
+        if (shulker.getValue() && isShulkerBox(block)) return true;
+        if (spawner.getValue() && block == Blocks.SPAWNER) return true;
+        if (netheriteBlock.getValue() && block == Blocks.NETHERITE_BLOCK) return true;
+        if (ancientDebris.getValue() && block == Blocks.ANCIENT_DEBRIS) return true;
+        return false;
+    }
+    
+    private boolean isShulkerBox(Block block) {
+        return block == Blocks.SHULKER_BOX ||
+               block == Blocks.WHITE_SHULKER_BOX ||
+               block == Blocks.ORANGE_SHULKER_BOX ||
+               block == Blocks.MAGENTA_SHULKER_BOX ||
+               block == Blocks.LIGHT_BLUE_SHULKER_BOX ||
+               block == Blocks.YELLOW_SHULKER_BOX ||
+               block == Blocks.LIME_SHULKER_BOX ||
+               block == Blocks.PINK_SHULKER_BOX ||
+               block == Blocks.GRAY_SHULKER_BOX ||
+               block == Blocks.LIGHT_GRAY_SHULKER_BOX ||
+               block == Blocks.CYAN_SHULKER_BOX ||
+               block == Blocks.PURPLE_SHULKER_BOX ||
+               block == Blocks.BLUE_SHULKER_BOX ||
+               block == Blocks.BROWN_SHULKER_BOX ||
+               block == Blocks.GREEN_SHULKER_BOX ||
+               block == Blocks.RED_SHULKER_BOX ||
+               block == Blocks.BLACK_SHULKER_BOX;
+    }
+    
+    @Override
+    public void onRender3D(MatrixStack matrixStack, float partialTicks) {
+        if (foundBlocks.isEmpty()) return;
+        
+        Color color = new Color(red.getValue(), green.getValue(), blue.getValue(), alpha.getValue());
+        
+        Vec3d cameraPos = mc.gameRenderer.getCamera().getPos();
+        
+        for (BlockPos pos : foundBlocks) {
+            double x = pos.getX() - cameraPos.x;
+            double y = pos.getY() - cameraPos.y;
+            double z = pos.getZ() - cameraPos.z;
+            
+            renderBlock(matrixStack, x, y, z, color);
+        }
+    }
+    
+    private void renderBlock(MatrixStack matrixStack, double x, double y, double z, Color color) {
+        matrixStack.push();
+        
+        if (fill.getValue()) {
+            renderFilledBox(matrixStack, x, y, z, x + 1, y + 1, z + 1, color);
+        }
+        
+        if (outline.getValue()) {
+            renderOutlineBox(matrixStack, x, y, z, x + 1, y + 1, z + 1, color);
+        }
+        
+        matrixStack.pop();
+    }
+    
+    private void renderFilledBox(MatrixStack matrixStack, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, Color color) {
+        Tessellator tessellator = Tessellator.getInstance();
+        VertexConsumer vertexConsumer = tessellator.getBuffer();
+        
+        matrixStack.push();
+        
+        RenderLayer renderLayer = RenderLayer.getLines();
+        
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthMask(false);
+        
+        // Bottom
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)minY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)minY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)minY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)minY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        
+        // Top
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)maxY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)maxY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)maxY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)maxY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        
+        // North
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)minY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)maxY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)maxY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)minY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        
+        // South
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)minY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)minY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)maxY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)maxY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        
+        // West
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)minY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)minY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)maxY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)minX, (float)maxY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        
+        // East
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)minY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)maxY, (float)minZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)maxY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)maxX, (float)minY, (float)maxZ).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthMask(true);
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glDisable(GL11.GL_BLEND);
+        
+        matrixStack.pop();
+    }
+    
+    private void renderOutlineBox(MatrixStack matrixStack, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, Color color) {
+        GL11.glPushMatrix();
+        GL11.glLineWidth(lineWidth.getValue());
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthMask(false);
+        
+        Tessellator tessellator = Tessellator.getInstance();
+        VertexConsumer vertexConsumer = tessellator.getBuffer();
+        
+        // Draw outline lines
+        // Bottom edges
+        drawLine(vertexConsumer, matrixStack, minX, minY, minZ, maxX, minY, minZ, color);
+        drawLine(vertexConsumer, matrixStack, maxX, minY, minZ, maxX, minY, maxZ, color);
+        drawLine(vertexConsumer, matrixStack, maxX, minY, maxZ, minX, minY, maxZ, color);
+        drawLine(vertexConsumer, matrixStack, minX, minY, maxZ, minX, minY, minZ, color);
+        
+        // Top edges
+        drawLine(vertexConsumer, matrixStack, minX, maxY, minZ, maxX, maxY, minZ, color);
+        drawLine(vertexConsumer, matrixStack, maxX, maxY, minZ, maxX, maxY, maxZ, color);
+        drawLine(vertexConsumer, matrixStack, maxX, maxY, maxZ, minX, maxY, maxZ, color);
+        drawLine(vertexConsumer, matrixStack, minX, maxY, maxZ, minX, maxY, minZ, color);
+        
+        // Vertical edges
+        drawLine(vertexConsumer, matrixStack, minX, minY, minZ, minX, maxY, minZ, color);
+        drawLine(vertexConsumer, matrixStack, maxX, minY, minZ, maxX, maxY, minZ, color);
+        drawLine(vertexConsumer, matrixStack, maxX, minY, maxZ, maxX, maxY, maxZ, color);
+        drawLine(vertexConsumer, matrixStack, minX, minY, maxZ, minX, maxY, maxZ, color);
+        
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthMask(true);
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glDisable(GL11.GL_BLEND);
+        GL11.glPopMatrix();
+    }
+    
+    private void drawLine(VertexConsumer vertexConsumer, MatrixStack matrixStack, double x1, double y1, double z1, double x2, double y2, double z2, Color color) {
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)x1, (float)y1, (float)z1).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+        vertexConsumer.vertex(matrixStack.peek().getPositionMatrix(), (float)x2, (float)y2, (float)z2).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
+    }
+    
+    @Override
+    public void onDisable() {
+        foundBlocks.clear();
+    }
+}
